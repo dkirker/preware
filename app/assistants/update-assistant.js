@@ -16,6 +16,8 @@ function UpdateAssistant(scene, force, var1, var2, var3)
 	
 	// list of feeds
 	this.feeds = [];
+	// lit of feed errors
+	this.feedErrors = [];
 
 	// we'll need these for the subscription based update
 	this.subscription = false;
@@ -206,6 +208,7 @@ UpdateAssistant.prototype.updateFeeds = function()
 	this.spinnerElement.style.display = "";
 	this.questionContainer.style.display = "none";
 	
+	this.feedErrors.length = 0;
 	// clear some packages stuff (incase an update is already in progress)
 	packages.feeds = [];
 	if (packages.subscription)
@@ -397,14 +400,24 @@ UpdateAssistant.prototype.downloadFeedRequest = function(num)
 
 UpdateAssistant.prototype.downloadFeedResponse = function(payload, num)
 {
+	var actLikeCompleted = false;
+    
 	if ((payload.returnValue === false) || (payload.stage == "failed")) {
-		this.errorMessage('Preware', payload.errorText + '<br>' + payload.stdErr.join("<br>"),
-						  this.loadFeeds);
+		/*this.errorMessage('Preware', payload.errorText + '<br>' + payload.stdErr.join("<br>"),
+						  this.loadFeeds);*/
+		var errorReport = {"payload": payload, "feedName": this.feeds[num].name};
+		
+		this.feedErrors.push(errorReport);
+		actLikeCompleted = true; // Move to the next feed. Report errors later.
 	}
 	else if (payload.stage == "status") {
 		this.displayAction($L("<strong>Downloading Feed Information</strong><br>") + this.feeds[num].name + "<br><br>" + payload.status);
 	}
 	else if (payload.stage == "completed") {
+		actLikeCompleted = true;
+	}
+    
+	if (actLikeCompleted) {
 		num = num + 1;
 		if (num < this.feeds.length) {
 			// start next
@@ -419,7 +432,22 @@ UpdateAssistant.prototype.downloadFeedResponse = function(payload, num)
 			// well updating looks to have finished, lets log the date:
 			prefs.put('lastUpdate', Math.round(new Date().getTime()/1000.0));
 			
-			this.loadFeeds();
+			if (this.feedErrors.length > 0) {
+				var errorText = "";
+				var i = 0;
+				
+				for (i = 0; i < this.feedErrors.length; i++) {
+					var curr = this.feedErrors[i];
+					errorText += curr.feedName + '<br><br>' +
+								 curr.payload.errorText + '<br>' +
+								 curr.payload.stdErr.join("<br>");
+				}
+				
+				this.errorMessage('Preware', errorText, this.loadFeeds);
+				this.feedErrors.length = 0;
+			} else {
+				this.loadFeeds();
+			}
 		}
 	}
 };
